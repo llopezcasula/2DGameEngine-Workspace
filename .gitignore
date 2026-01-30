@@ -1,0 +1,32 @@
+# Build folders
+/build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# Compiled binaries
+*.exe
+*.dll
+*.lib
+*.a
+*.so
+*.pdb
+*.ilk
+
+# IDEs
+.vscode/
+.idea/
+.vs/
+
+# OS junk
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# JetBrains / CLion
+.idea/
+cmake-build-*/
+out/
