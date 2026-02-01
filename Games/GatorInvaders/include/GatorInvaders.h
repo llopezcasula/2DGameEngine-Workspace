@@ -21,6 +21,7 @@ class Texture;
 enum class GameState
 {
     MainMenu,
+    Controls,
     Playing,
     Paused,
     GameOver,
@@ -165,4 +166,11 @@ private:
     std::unique_ptr<Texture> m_UFOTexture;     // Sprite sheet with 2 frames
     std::unique_ptr<Texture> m_GatorAlienTexture; // 2-frame sheet (closed/open)
     std::shared_ptr<Texture> m_BackgroundTexture;
+
+    void SetupControlsMenu();
+    void ShowControlsMenu(bool returnToPause);
+    void CloseControlsMenu();
+
+    std::unique_ptr<Menu> m_ControlsMenu;
+    bool m_ControlsReturnToPause = false; // if opened from pause menu, go back to pause
 };

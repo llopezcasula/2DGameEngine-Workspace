@@ -133,6 +133,7 @@ void GatorInvaders::OnInit()
 
     SetupMainMenu();
     SetupPauseMenu();
+    SetupControlsMenu();
 
     ShowMainMenu();
     Physics::SetDebugDraw(false);
@@ -166,6 +167,7 @@ void GatorInvaders::OnShutdown()
 
     m_MainMenu.reset();
     m_PauseMenu.reset();
+    m_ControlsMenu.reset();
 }
 
 void GatorInvaders::InitAudio()
@@ -241,12 +243,18 @@ void GatorInvaders::LoadTextures()
 
 void GatorInvaders::SetupMainMenu()
 {
-    m_MainMenu = std::make_unique<Menu>();
+    m_MainMenu = std::make_unique<Menu>(); // MUST be first
+
+    const float startY   = 80.0f;
+    const float spacing  = 90.0f;
+    const glm::vec2 size = { 250.0f, 60.0f };
+
+    int i = 0;
 
     auto* startBtn = m_MainMenu->AddButton(
         "START GAME",
-        glm::vec2(0.0f, 50.0f),
-        glm::vec2(250.0f, 60.0f)
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
     );
     startBtn->SetColors(
         glm::vec4(0.2f, 0.6f, 0.2f, 1.0f),
@@ -255,10 +263,25 @@ void GatorInvaders::SetupMainMenu()
     );
     startBtn->SetOnClick([this]() { AudioManager::PlaySFX("click"); StartGame(); });
 
+    auto* controlsBtn = m_MainMenu->AddButton(
+        "CONTROLS",
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
+    );
+    controlsBtn->SetColors(
+        glm::vec4(0.2f, 0.2f, 0.6f, 1.0f),
+        glm::vec4(0.3f, 0.3f, 0.8f, 1.0f),
+        glm::vec4(0.1f, 0.1f, 0.4f, 1.0f)
+    );
+    controlsBtn->SetOnClick([this]() {
+        AudioManager::PlaySFX("click");
+        ShowControlsMenu(false);
+    });
+
     auto* quitBtn = m_MainMenu->AddButton(
         "QUIT",
-        glm::vec2(0.0f, -50.0f),
-        glm::vec2(250.0f, 60.0f)
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
     );
     quitBtn->SetColors(
         glm::vec4(0.6f, 0.2f, 0.2f, 1.0f),
@@ -270,14 +293,21 @@ void GatorInvaders::SetupMainMenu()
     m_MainMenu->Show();
 }
 
+
 void GatorInvaders::SetupPauseMenu()
 {
-    m_PauseMenu = std::make_unique<Menu>();
+    m_PauseMenu = std::make_unique<Menu>(); // MUST be first
+
+    const float startY   = 120.0f; // a little higher since there are 4 buttons
+    const float spacing  = 90.0f;
+    const glm::vec2 size = { 250.0f, 60.0f };
+
+    int i = 0;
 
     auto* resumeBtn = m_PauseMenu->AddButton(
         "RESUME",
-        glm::vec2(0.0f, 80.0f),
-        glm::vec2(250.0f, 60.0f)
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
     );
     resumeBtn->SetColors(
         glm::vec4(0.2f, 0.6f, 0.2f, 1.0f),
@@ -286,10 +316,25 @@ void GatorInvaders::SetupPauseMenu()
     );
     resumeBtn->SetOnClick([this]() { AudioManager::PlaySFX("click"); TogglePause(); });
 
+    auto* controlsBtn = m_PauseMenu->AddButton(
+        "CONTROLS",
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
+    );
+    controlsBtn->SetColors(
+        glm::vec4(0.2f, 0.2f, 0.6f, 1.0f),
+        glm::vec4(0.3f, 0.3f, 0.8f, 1.0f),
+        glm::vec4(0.1f, 0.1f, 0.4f, 1.0f)
+    );
+    controlsBtn->SetOnClick([this]() {
+        AudioManager::PlaySFX("click");
+        ShowControlsMenu(true);
+    });
+
     auto* restartBtn = m_PauseMenu->AddButton(
         "RESTART",
-        glm::vec2(0.0f, 0.0f),
-        glm::vec2(250.0f, 60.0f)
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
     );
     restartBtn->SetColors(
         glm::vec4(0.6f, 0.6f, 0.2f, 1.0f),
@@ -305,8 +350,8 @@ void GatorInvaders::SetupPauseMenu()
 
     auto* menuBtn = m_PauseMenu->AddButton(
         "MAIN MENU",
-        glm::vec2(0.0f, -80.0f),
-        glm::vec2(250.0f, 60.0f)
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
     );
     menuBtn->SetColors(
         glm::vec4(0.6f, 0.2f, 0.2f, 1.0f),
@@ -397,6 +442,55 @@ void GatorInvaders::StartGame()
     SpawnBarriers();
 }
 
+void GatorInvaders::SetupControlsMenu()
+{
+    m_ControlsMenu = std::make_unique<Menu>();
+
+    auto* backBtn = m_ControlsMenu->AddButton(
+        "BACK",
+        glm::vec2(0.0f, -220.0f),
+        glm::vec2(250.0f, 60.0f)
+    );
+    backBtn->SetColors(
+        glm::vec4(0.6f, 0.2f, 0.2f, 1.0f),
+        glm::vec4(0.8f, 0.3f, 0.3f, 1.0f),
+        glm::vec4(0.4f, 0.1f, 0.1f, 1.0f)
+    );
+    backBtn->SetOnClick([this]() {
+        AudioManager::PlaySFX("click");
+        CloseControlsMenu();
+    });
+
+    m_ControlsMenu->Hide();
+}
+
+void GatorInvaders::ShowControlsMenu(bool returnToPause)
+{
+    m_ControlsReturnToPause = returnToPause;
+    m_State = GameState::Controls;
+
+    if (m_MainMenu) m_MainMenu->Hide();
+    if (m_PauseMenu) m_PauseMenu->Hide();
+    if (m_ControlsMenu) m_ControlsMenu->Show();
+}
+
+void GatorInvaders::CloseControlsMenu()
+{
+    if (m_ControlsMenu) m_ControlsMenu->Hide();
+
+    if (m_ControlsReturnToPause)
+    {
+        ShowPauseMenu(); // goes back to paused state + shows pause menu
+    }
+    else
+    {
+        // Return to main menu state + show main menu
+        m_State = GameState::MainMenu;
+        if (m_MainMenu) m_MainMenu->Show();
+        if (m_PauseMenu) m_PauseMenu->Hide();
+    }
+}
+
 void GatorInvaders::QuitGame()
 {
     glfwSetWindowShouldClose(GetWindow()->GetNativeWindow(), true);
@@ -447,7 +541,7 @@ void GatorInvaders::SpawnEnemyGrid()
         {
             rowScore = 40;
             sheet = m_Enemy1Texture.get();
-            enemySize = computeSizeFromSheet(sheet, 55.0f);
+            enemySize = computeSizeFromSheet(sheet, 45.0f);
         }
         else if (row == 1 || row == 2)
         {
@@ -477,9 +571,13 @@ void GatorInvaders::SpawnEnemyGrid()
             enemy->SetTexture(sheet);
             enemy->SetAnimationFrame(0);
 
-            auto collider = std::make_unique<BoxCollider>(enemy.get(), enemySize);
+            const float ENEMY_HITBOX_SCALE = 0.75f; // same for all enemies
+            glm::vec2 colliderSize = enemySize * ENEMY_HITBOX_SCALE;
+
+            auto collider = std::make_unique<BoxCollider>(enemy.get(), colliderSize);
             collider->SetTrigger(true);
             enemy->SetCollider(std::move(collider));
+
 
             m_Enemies.push_back(std::move(enemy));
             m_EnemyRowScores.push_back(rowScore);
@@ -646,6 +744,13 @@ void GatorInvaders::OnUpdate(float deltaTime)
         if (m_PauseMenu) m_PauseMenu->Update(*GetCamera());
         return;
     }
+
+    if (m_State == GameState::Controls)
+    {
+        if (m_ControlsMenu) m_ControlsMenu->Update(*GetCamera());
+        return;
+    }
+
     if (m_State == GameState::GameOver || m_State == GameState::LevelComplete)
         return;
 
@@ -737,9 +842,12 @@ void GatorInvaders::OnUpdate(float deltaTime)
             m_UFO->SetTexture(m_UFOTexture.get());
             m_UFO->SetAnimationFrame(0);
 
-            auto col = std::make_unique<BoxCollider>(m_UFO.get(), size);
+
+            glm::vec2 ufoColliderSize = size * 0.50f;
+            auto col = std::make_unique<BoxCollider>(m_UFO.get(), ufoColliderSize);
             col->SetTrigger(true);
             m_UFO->SetCollider(std::move(col));
+
 
             m_UFOActive = true;
 
@@ -1043,13 +1151,46 @@ void GatorInvaders::OnRender()
 
         glm::vec2 camPos = GetCamera()->GetPosition();
         TextRenderer::RenderText("PAUSED",
-            glm::vec2(camPos.x - 90.0f, camPos.y + 200.0f),
+            glm::vec2(camPos.x - 100.0f, camPos.y + 200.0f),
             3.0f,
             glm::vec4(1, 1, 0, 1));
 
         if (m_PauseMenu) m_PauseMenu->Render(*GetCamera());
         return;
     }
+
+    if (m_State == GameState::Controls)
+    {
+        glm::vec2 camPos = GetCamera()->GetPosition();
+
+        TextRenderer::RenderText("CONTROLS",
+            glm::vec2(camPos.x - 140.0f, camPos.y + 260.0f),
+            3.0f,
+            glm::vec4(1, 1, 1, 1));
+
+        // List your controls (edit as you like)
+        float x = camPos.x - 420.0f;
+        float y = camPos.y + 170.0f;
+        float s = 1.6f;
+        float dy = 38.0f;
+
+        TextRenderer::RenderText("       Move Left:           LEFT Arrow / A", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Move Right:          RIGHT Arrow / D", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Shoot:               SPACE", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Pause:               ESC / P", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Next Level:          R", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Fullscreen:          F11", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Show Hitboxes:       F1", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+
+        TextRenderer::RenderText("Press ESC to go back",
+            glm::vec2(camPos.x - 170.0f, camPos.y - 150.0f),
+            1.5f,
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
+
+        if (m_ControlsMenu) m_ControlsMenu->Render(*GetCamera());
+        return;
+    }
+
 
     // Gameplay world
     if (m_CeilingWall) m_CeilingWall->Render();
@@ -1176,6 +1317,14 @@ void GatorInvaders::OnInput(float deltaTime)
             TogglePause();
         return;
     }
+
+    if (m_State == GameState::Controls)
+    {
+        if (Input::IsKeyJustPressed(KEY_ESCAPE))
+            CloseControlsMenu();
+        return;
+    }
+
 
     // Game over input
     if (m_State == GameState::GameOver)
