@@ -3,6 +3,7 @@
 #include "Core/Game.h"
 #include "Audio/AudioManager.h"
 #include <memory>
+#include <string>
 #include <vector>
 #include <array>
 #include <unordered_map>
@@ -22,6 +23,8 @@ enum class GameState
 {
     MainMenu,
     Controls,
+    Leaderboard,
+    EnterInitials,
     Playing,
     Paused,
     GameOver,
@@ -76,10 +79,15 @@ private:
     // Game State
     GameState m_State;
     bool m_AudioInitialized;
+    bool m_ControlsReturnToPause = false;
+    bool m_LeaderboardReturnToPause = false;
 
     // Menus
     std::unique_ptr<Menu> m_MainMenu;
     std::unique_ptr<Menu> m_PauseMenu;
+    std::unique_ptr<Menu> m_ControlsMenu;
+    std::unique_ptr<Menu> m_LeaderboardMenu;
+
 
     // Player
     std::unique_ptr<Player> m_Player;
@@ -171,6 +179,28 @@ private:
     void ShowControlsMenu(bool returnToPause);
     void CloseControlsMenu();
 
-    std::unique_ptr<Menu> m_ControlsMenu;
-    bool m_ControlsReturnToPause = false; // if opened from pause menu, go back to pause
+    struct LeaderboardEntry
+    {
+        std::string initials; // 3 letters
+        int score = 0;
+    };
+
+    std::vector<LeaderboardEntry> m_Leaderboard; // sorted desc, max 10
+
+    std::string m_InitialsInput;   // typed initials
+    int m_PendingScore = 0;        // score being submitted
+
+
+    // Leaderboard
+    void SetupLeaderboardMenu();
+    void ShowLeaderboardMenu(bool returnToPause);
+    void CloseLeaderboardMenu();
+
+    void LoadLeaderboard();
+    void SaveLeaderboard();
+    bool IsHighScore(int score) const;
+    void BeginInitialsEntry();
+    void SubmitInitialsEntry();
+
+
 };

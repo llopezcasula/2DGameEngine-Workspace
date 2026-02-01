@@ -1,5 +1,8 @@
 // GatorInvaders.cpp
-// Classic Space Invaders barrier system - 10 segments per barrier
+
+#include <fstream>
+#include <filesystem>
+#include <cctype>
 
 #include "GatorInvaders.h"
 
@@ -136,6 +139,9 @@ void GatorInvaders::OnInit()
     SetupMainMenu();
     SetupPauseMenu();
     SetupControlsMenu();
+
+    SetupLeaderboardMenu();
+    LoadLeaderboard();
 
     ShowMainMenu();
     Physics::SetDebugDraw(false);
@@ -280,6 +286,22 @@ void GatorInvaders::SetupMainMenu()
         ShowControlsMenu(false);
     });
 
+    auto* leaderboardBtn = m_MainMenu->AddButton(
+        "LEADERBOARD",
+        glm::vec2(0.0f, startY - i++ * spacing),
+        size
+    );
+    leaderboardBtn->SetColors(
+        glm::vec4(0.5f, 0.2f, 0.6f, 1.0f),
+        glm::vec4(0.7f, 0.3f, 0.8f, 1.0f),
+        glm::vec4(0.3f, 0.1f, 0.4f, 1.0f)
+    );
+    leaderboardBtn->SetOnClick([this]() {
+        AudioManager::PlaySFX("click");
+        ShowLeaderboardMenu(false);
+    });
+
+
     auto* quitBtn = m_MainMenu->AddButton(
         "QUIT",
         glm::vec2(0.0f, startY - i++ * spacing),
@@ -363,6 +385,49 @@ void GatorInvaders::SetupPauseMenu()
     menuBtn->SetOnClick([this]() { AudioManager::PlaySFX("click"); ShowMainMenu(); });
 
     m_PauseMenu->Hide();
+}
+
+void GatorInvaders::SetupLeaderboardMenu()
+{
+    m_LeaderboardMenu = std::make_unique<Menu>();
+
+    auto* backBtn = m_LeaderboardMenu->AddButton(
+        "BACK",
+        glm::vec2(0.0f, -240.0f),
+        glm::vec2(250.0f, 60.0f)
+    );
+    backBtn->SetColors(
+        glm::vec4(0.6f, 0.2f, 0.2f, 1.0f),
+        glm::vec4(0.8f, 0.3f, 0.3f, 1.0f),
+        glm::vec4(0.4f, 0.1f, 0.1f, 1.0f)
+    );
+    backBtn->SetOnClick([this]() {
+        AudioManager::PlaySFX("click");
+        CloseLeaderboardMenu();
+    });
+
+    m_LeaderboardMenu->Hide();
+}
+
+void GatorInvaders::ShowLeaderboardMenu(bool returnToPause)
+{
+    m_LeaderboardReturnToPause = returnToPause;
+    m_State = GameState::Leaderboard;
+
+    if (m_MainMenu) m_MainMenu->Hide();
+    if (m_PauseMenu) m_PauseMenu->Hide();
+    if (m_ControlsMenu) m_ControlsMenu->Hide();
+    if (m_LeaderboardMenu) m_LeaderboardMenu->Show();
+}
+
+void GatorInvaders::CloseLeaderboardMenu()
+{
+    if (m_LeaderboardMenu) m_LeaderboardMenu->Hide();
+
+    if (m_LeaderboardReturnToPause)
+        ShowPauseMenu();
+    else
+        ShowMainMenu();
 }
 
 void GatorInvaders::ShowMainMenu()
@@ -752,6 +817,18 @@ void GatorInvaders::OnUpdate(float deltaTime)
         if (m_ControlsMenu) m_ControlsMenu->Update(*GetCamera());
         return;
     }
+    if (m_State == GameState::Leaderboard)
+    {
+        if (m_LeaderboardMenu) m_LeaderboardMenu->Update(*GetCamera());
+        return;
+    }
+
+    if (m_State == GameState::EnterInitials)
+    {
+        // frozen while typing initials
+        return;
+    }
+
 
     if (m_State == GameState::GameOver || m_State == GameState::LevelComplete)
         return;
@@ -1233,6 +1310,78 @@ void GatorInvaders::OnRender()
         return;
     }
 
+    if (m_State == GameState::Leaderboard)
+    {
+        glm::vec2 camPos = GetCamera()->GetPosition();
+
+        TextRenderer::RenderText("LEADERBOARD",
+            glm::vec2(camPos.x - 220.0f, camPos.y + 280.0f),
+            3.0f,
+            glm::vec4(1, 1, 1, 1));
+
+        float x = camPos.x - 260.0f;
+        float y = camPos.y + 200.0f;
+        float s = 1.8f;
+        float dy = 35.0f;
+
+        if (m_Leaderboard.empty())
+        {
+            TextRenderer::RenderText("No scores yet!",
+                glm::vec2(camPos.x - 120.0f, camPos.y + 120.0f),
+                1.8f,
+                glm::vec4(0.9f, 0.9f, 0.9f, 1.0f));
+        }
+        else
+        {
+            for (int i = 0; i < (int)m_Leaderboard.size(); i++)
+            {
+                const auto& e = m_Leaderboard[i];
+                std::string line = std::to_string(i + 1) + ".  " + e.initials + "    " + std::to_string(e.score);
+                TextRenderer::RenderText(line, glm::vec2(x, y), s, glm::vec4(1,1,1,1));
+                y -= dy;
+            }
+        }
+
+        TextRenderer::RenderText("Press ESC to go back",
+            glm::vec2(camPos.x - 170.0f, camPos.y - 170.0f),
+            1.5f,
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
+
+        if (m_LeaderboardMenu) m_LeaderboardMenu->Render(*GetCamera());
+        return;
+    }
+
+    if (m_State == GameState::EnterInitials)
+    {
+        glm::vec2 camPos = GetCamera()->GetPosition();
+
+        TextRenderer::RenderText("NEW HIGH SCORE!",
+            glm::vec2(camPos.x - 260.0f, camPos.y + 180.0f),
+            2.8f,
+            glm::vec4(1, 1, 0, 1));
+
+        TextRenderer::RenderText("Enter your initials (3 letters):",
+            glm::vec2(camPos.x - 320.0f, camPos.y + 90.0f),
+            1.8f,
+            glm::vec4(1, 1, 1, 1));
+
+        std::string shown = m_InitialsInput;
+        while (shown.size() < 3) shown += "_";
+
+        TextRenderer::RenderText(shown,
+            glm::vec2(camPos.x - 50.0f, camPos.y + 20.0f),
+            3.0f,
+            glm::vec4(1, 1, 1, 1));
+
+        TextRenderer::RenderText("Press ENTER to submit",
+            glm::vec2(camPos.x - 190.0f, camPos.y - 80.0f),
+            1.6f,
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
+
+        return;
+    }
+
+
     // ------------------------------------------------------------
     // Helper: draw barriers (used in Playing + Paused)
     // ------------------------------------------------------------
@@ -1419,6 +1568,55 @@ void GatorInvaders::OnInput(float deltaTime)
         return;
     }
 
+    if (m_State == GameState::Leaderboard)
+    {
+        if (Input::IsKeyJustPressed(KEY_ESCAPE))
+            CloseLeaderboardMenu();
+        return;
+    }
+
+    if (m_State == GameState::EnterInitials)
+    {
+        // Backspace
+        if (Input::IsKeyJustPressed(KEY_BACKSPACE))
+        {
+            if (!m_InitialsInput.empty())
+                m_InitialsInput.pop_back();
+            return;
+        }
+
+        // Submit
+        if (Input::IsKeyJustPressed(KEY_ENTER))
+        {
+            if (m_InitialsInput.size() == 3)
+                SubmitInitialsEntry();
+            return;
+        }
+
+        // Accept A-Z
+        if (m_InitialsInput.size() < 3)
+        {
+            struct KeyLetter { int key; char c; };
+            static const KeyLetter letters[] = {
+                { KEY_A,'A'},{KEY_B,'B'},{KEY_C,'C'},{KEY_D,'D'},{KEY_E,'E'},{KEY_F,'F'},
+                { KEY_G,'G'},{KEY_H,'H'},{KEY_I,'I'},{KEY_J,'J'},{KEY_K,'K'},{KEY_L,'L'},
+                { KEY_M,'M'},{KEY_N,'N'},{KEY_O,'O'},{KEY_P,'P'},{KEY_Q,'Q'},{KEY_R,'R'},
+                { KEY_S,'S'},{KEY_T,'T'},{KEY_U,'U'},{KEY_V,'V'},{KEY_W,'W'},{KEY_X,'X'},
+                { KEY_Y,'Y'},{KEY_Z,'Z'}
+            };
+
+            for (const auto& kv : letters)
+            {
+                if (Input::IsKeyJustPressed(kv.key))
+                {
+                    m_InitialsInput.push_back(kv.c);
+                    break;
+                }
+            }
+        }
+
+        return; // freeze everything else
+    }
 
     // Game over input
     if (m_State == GameState::GameOver)
@@ -1548,13 +1746,108 @@ void GatorInvaders::RestartGame()
     SpawnBarriers();
 }
 
+static std::string GetLeaderboardPath()
+{
+    // Save next to the executable / working dir
+    // (No assumptions about assets being writable)
+    return "leaderboard.txt";
+}
+
+void GatorInvaders::LoadLeaderboard()
+{
+    m_Leaderboard.clear();
+
+    std::ifstream in(GetLeaderboardPath());
+    if (!in.is_open())
+        return;
+
+    // Format: ABC 12345
+    std::string initials;
+    int score = 0;
+
+    while (in >> initials >> score)
+    {
+        if (initials.size() != 3) continue;
+        m_Leaderboard.push_back({ initials, score });
+    }
+
+    std::sort(m_Leaderboard.begin(), m_Leaderboard.end(),
+        [](const LeaderboardEntry& a, const LeaderboardEntry& b) {
+            return a.score > b.score;
+        });
+
+    if ((int)m_Leaderboard.size() > 10)
+        m_Leaderboard.resize(10);
+}
+
+void GatorInvaders::SaveLeaderboard()
+{
+    std::ofstream out(GetLeaderboardPath(), std::ios::trunc);
+    if (!out.is_open())
+        return;
+
+    for (const auto& e : m_Leaderboard)
+        out << e.initials << " " << e.score << "\n";
+}
+
+
+bool GatorInvaders::IsHighScore(int score) const
+{
+    if (score <= 0) return false;
+    if ((int)m_Leaderboard.size() < 10) return true;
+    return score > m_Leaderboard.back().score; // list is sorted desc
+}
+
+void GatorInvaders::BeginInitialsEntry()
+{
+    m_PendingScore = m_Score;
+    m_InitialsInput.clear();
+    m_State = GameState::EnterInitials;
+}
+
+void GatorInvaders::SubmitInitialsEntry()
+{
+    // Safety: normalize to exactly 3 uppercase letters
+    for (char& c : m_InitialsInput)
+        c = (char)std::toupper((unsigned char)c);
+
+    if (m_InitialsInput.size() != 3)
+        return;
+
+    m_Leaderboard.push_back({ m_InitialsInput, m_PendingScore });
+
+    // sort desc by score
+    std::sort(m_Leaderboard.begin(), m_Leaderboard.end(),
+        [](const LeaderboardEntry& a, const LeaderboardEntry& b) {
+            return a.score > b.score;
+        });
+
+    // keep top 10
+    if ((int)m_Leaderboard.size() > 10)
+        m_Leaderboard.resize(10);
+
+    SaveLeaderboard();
+
+    // After submit, show leaderboard
+    ShowLeaderboardMenu(false);
+}
+
 void GatorInvaders::GameOver()
 {
-    m_State = GameState::GameOver;
-
     AudioManager::PlaySFX("game_over");
     StopGameMusic();
+
+    // If score qualifies, ask for initials; otherwise show normal game over
+    if (IsHighScore(m_Score))
+    {
+        BeginInitialsEntry();
+    }
+    else
+    {
+        m_State = GameState::GameOver;
+    }
 }
+
 
 // Header declares this, so define it
 void GatorInvaders::DrawBackground(Camera* cam, const std::shared_ptr<Texture>& tex)
