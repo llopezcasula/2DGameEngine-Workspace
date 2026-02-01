@@ -1,5 +1,5 @@
 #include "Core/Engine.h"
-#include "SpaceInvadersGame.h"
+#include "GatorInvaders.h"
 #include <iostream>
 
 int main()
@@ -22,7 +22,7 @@ int main()
     Engine engine;
 
     // Create Gator Invaders game
-    SpaceInvadersGame game;
+    GatorInvaders game;
 
     // Run! The engine will call game.OnInit(), OnUpdate(), etc.
     engine.Run(&game);

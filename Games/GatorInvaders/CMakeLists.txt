@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(GatorInvaders
         src/main.cpp
-        src/SpaceInvadersGame.cpp
-        include/SpaceInvadersGame.h
+        src/GatorInvaders.cpp
+        include/GatorInvaders.h
 )
 
 target_include_directories(GatorInvaders PRIVATE

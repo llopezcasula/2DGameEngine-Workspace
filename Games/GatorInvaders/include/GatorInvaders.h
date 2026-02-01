@@ -4,6 +4,8 @@
 #include "Audio/AudioManager.h"
 #include <memory>
 #include <vector>
+#include <array>
+#include <unordered_map>
 #include <glm/glm.hpp>
 
 // Forward declarations
@@ -11,6 +13,7 @@ class Player;
 class Enemy;
 class Bullet;
 class Obstacle;
+class Entity;
 class Menu;
 class Time;
 class Texture;
@@ -25,11 +28,11 @@ enum class GameState
     PlayerHit
 };
 
-class SpaceInvadersGame : public Game
+class GatorInvaders : public Game
 {
 public:
-    SpaceInvadersGame();
-    ~SpaceInvadersGame();
+    GatorInvaders();
+    ~GatorInvaders();
 
     // Override Game lifecycle methods
     void OnInit() override;
@@ -42,7 +45,6 @@ private:
     // Game flow
     void SpawnEnemyGrid();
     void SpawnBarriers();
-    void UpdateBarrierColors();
     void ShootBullet();
     void EnemyShoot();
     void CheckCollisions();
@@ -110,10 +112,34 @@ private:
     std::unique_ptr<Obstacle> m_CeilingWall;
     float m_CeilingY;
 
-    // Barriers
-    std::vector<std::unique_ptr<Obstacle>> m_Barriers;
-    std::vector<int> m_BarrierHealth;
-    static constexpr int MAX_BARRIER_HEALTH = 20;
+    // Barriers - Classic Space Invaders style (4x3 grid, bottom row only has 2 outer parts)
+    static constexpr int BARRIER_COUNT = 4;
+    static constexpr int BARRIER_PARTS = 10;      // 4 + 4 + 2 = 10 parts
+    static constexpr int BARRIER_COLS = 4;        // 4 columns wide
+    static constexpr int BARRIER_ROWS = 3;        // 3 rows high
+    static constexpr int BARRIER_STAGES = 4;      // barrier0..barrier3
+
+    struct BarrierPart
+    {
+        std::unique_ptr<Obstacle> obstacle; // collider owner
+        int stage = 0;                      // 0..3
+        bool broken = false;                // true => bullets pass through
+        int gridRow = 0;                    // 0-3 (top to bottom)
+        int gridCol = 0;                    // 0-2 (left to right)
+    };
+
+    struct Barrier
+    {
+        glm::vec2 center;
+        glm::vec2 size;
+        std::array<BarrierPart, BARRIER_PARTS> parts;
+    };
+
+    std::array<std::unique_ptr<Texture>, BARRIER_STAGES> m_BarrierStageTextures;
+    std::array<Barrier, BARRIER_COUNT> m_BarriersSplit;
+
+    // Quick lookup from collider owner -> (barrierIndex, partIndex)
+    std::unordered_map<Entity*, std::pair<int,int>> m_BarrierPartLookup;
 
     // UFO
     std::unique_ptr<Enemy> m_UFO;
@@ -139,8 +165,4 @@ private:
     std::unique_ptr<Texture> m_UFOTexture;     // Sprite sheet with 2 frames
     std::unique_ptr<Texture> m_GatorAlienTexture; // 2-frame sheet (closed/open)
     std::shared_ptr<Texture> m_BackgroundTexture;
-    static constexpr int BARRIER_FRAMES = 10;
-
-    std::unique_ptr<Texture> m_BarrierSheet;
-
 };

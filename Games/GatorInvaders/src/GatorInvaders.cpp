@@ -1,7 +1,9 @@
-// GatorInvaders.cpp (full file - barrier fix using REAL UV slices for your barrier.png)
+// GatorInvaders.cpp
+// Classic Space Invaders barrier system - 10 segments per barrier
 
-#include "SpaceInvadersGame.h"
+#include "GatorInvaders.h"
 
+#include "Entities/Entity.h"
 #include "Entities/Player.h"
 #include "Entities/Enemy.h"
 #include "Entities/Bullet.h"
@@ -28,44 +30,38 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
 
 // ------------------------------------------------------------
 // Small helpers (file-local)
 // ------------------------------------------------------------
 static float Clamp01(float v) { return std::max(0.0f, std::min(1.0f, v)); }
 
-// IMPORTANT:
-// Your barrier.png is NOT an evenly-spaced 10-column sprite sheet.
-// It contains 5 frames with padding, so we use hard-coded UV boxes for each frame.
-// These UVs sample the correct parts so barriers won't look "cropped" or "flipped".
-static glm::vec4 GetBarrierFrameUV(int frameIndex)
+static glm::vec4 GetBarrierPartUV(int partIndex, int parts, Texture* tex)
 {
-    // 5 frames: full -> damaged -> more damaged -> etc
-    static const glm::vec4 UVS[5] =
-    {
-        // (u0, v0, u1, v1)
-        {0.015625f, 0.355469f, 0.192057f, 0.577148f}, // frame 0 (full)
-        {0.199219f, 0.355469f, 0.382812f, 0.581055f}, // frame 1
-        {0.391276f, 0.355469f, 0.578776f, 0.581055f}, // frame 2
-        {0.583984f, 0.355469f, 0.763672f, 0.583984f}, // frame 3
-        {0.771484f, 0.356445f, 0.967448f, 0.576172f}, // frame 4 (most damaged)
-    };
+    const int W = tex->GetWidth();
+    const int H = tex->GetHeight();
 
-    frameIndex = std::clamp(frameIndex, 0, 4);
+    // Split by pixel boundaries using rounding so all pixels are used exactly once
+    const int x0 = (int)std::round((double)partIndex       * (double)W / (double)parts);
+    const int x1 = (int)std::round((double)(partIndex + 1) * (double)W / (double)parts);
 
-    // tiny inset to reduce bleeding from neighboring pixels
-    const float insetU = 0.0008f;
-    const float insetV = 0.0008f;
+    // Texel-centered UVs to avoid nearest-filter sampling errors
+    const float u0 = ((float)x0 + 0.5f) / (float)W;
+    const float u1 = ((float)x1 - 0.5f) / (float)W;
 
-    glm::vec4 uv = UVS[frameIndex];
-    uv.x += insetU; uv.z -= insetU;
-    uv.y += insetV; uv.w -= insetV;
-    return uv;
+    const float v0 = (0.5f) / (float)H;
+    const float v1 = ((float)H - 0.5f) / (float)H;
+
+    return glm::vec4(u0, v0, u1, v1);
 }
+
 
 // ------------------------------------------------------------
 
-SpaceInvadersGame::SpaceInvadersGame()
+GatorInvaders::GatorInvaders()
     : m_State(GameState::MainMenu)
     , m_AudioInitialized(false)
     , m_PlayerStartPos(0.0f, -280.0f)
@@ -96,9 +92,9 @@ SpaceInvadersGame::SpaceInvadersGame()
 {
 }
 
-SpaceInvadersGame::~SpaceInvadersGame() = default;
+GatorInvaders::~GatorInvaders() = default;
 
-void SpaceInvadersGame::OnInit()
+void GatorInvaders::OnInit()
 {
     std::cout << "\n";
     std::cout << "╔════════════════════════════════╗\n";
@@ -144,7 +140,7 @@ void SpaceInvadersGame::OnInit()
     std::cout << "Game initialized. Showing main menu...\n";
 }
 
-void SpaceInvadersGame::OnShutdown()
+void GatorInvaders::OnShutdown()
 {
     std::cout << "Gator Invaders shutting down\n";
     AudioManager::StopMusic();
@@ -155,15 +151,24 @@ void SpaceInvadersGame::OnShutdown()
     m_PlayerBullet.reset();
     m_Player.reset();
     m_CeilingWall.reset();
-    m_Barriers.clear();
-    m_BarrierHealth.clear();
+
+    // Clear barrier segments
+    m_BarrierPartLookup.clear();
+    for (auto& barrier : m_BarriersSplit)
+    {
+        for (auto& part : barrier.parts)
+        {
+            part.obstacle.reset();
+        }
+    }
+
     m_UFO.reset();
 
     m_MainMenu.reset();
     m_PauseMenu.reset();
 }
 
-void SpaceInvadersGame::InitAudio()
+void GatorInvaders::InitAudio()
 {
     m_AudioInitialized = true;
 
@@ -174,7 +179,7 @@ void SpaceInvadersGame::InitAudio()
     std::cout << "Audio system ready!\n\n";
 }
 
-void SpaceInvadersGame::LoadGameSounds()
+void GatorInvaders::LoadGameSounds()
 {
     if (!m_AudioInitialized) return;
 
@@ -195,19 +200,19 @@ void SpaceInvadersGame::LoadGameSounds()
     std::cout << "Sounds loaded!\n";
 }
 
-void SpaceInvadersGame::PlayGameMusic()
+void GatorInvaders::PlayGameMusic()
 {
     if (!m_AudioInitialized) return;
     AudioManager::PlayMusic("assets/audio/music/background.mp3", true);
 }
 
-void SpaceInvadersGame::StopGameMusic()
+void GatorInvaders::StopGameMusic()
 {
     if (!m_AudioInitialized) return;
     AudioManager::StopMusic();
 }
 
-void SpaceInvadersGame::LoadTextures()
+void GatorInvaders::LoadTextures()
 {
     std::cout << "Loading textures...\n";
 
@@ -225,13 +230,16 @@ void SpaceInvadersGame::LoadTextures()
     // Background
     m_BackgroundTexture = std::make_shared<Texture>("assets/textures/background.png");
 
-    // Barriers (your file is 5 frames with padding)
-    m_BarrierSheet = std::make_unique<Texture>("assets/textures/barrier.png");
+    // Barrier damage stages (each is a full barrier image with 10 "columns")
+    m_BarrierStageTextures[0] = std::make_unique<Texture>("assets/textures/barriers/barrier0.png");
+    m_BarrierStageTextures[1] = std::make_unique<Texture>("assets/textures/barriers/barrier1.png");
+    m_BarrierStageTextures[2] = std::make_unique<Texture>("assets/textures/barriers/barrier2.png");
+    m_BarrierStageTextures[3] = std::make_unique<Texture>("assets/textures/barriers/barrier3.png");
 
     std::cout << "Textures loaded!\n";
 }
 
-void SpaceInvadersGame::SetupMainMenu()
+void GatorInvaders::SetupMainMenu()
 {
     m_MainMenu = std::make_unique<Menu>();
 
@@ -262,7 +270,7 @@ void SpaceInvadersGame::SetupMainMenu()
     m_MainMenu->Show();
 }
 
-void SpaceInvadersGame::SetupPauseMenu()
+void GatorInvaders::SetupPauseMenu()
 {
     m_PauseMenu = std::make_unique<Menu>();
 
@@ -310,7 +318,7 @@ void SpaceInvadersGame::SetupPauseMenu()
     m_PauseMenu->Hide();
 }
 
-void SpaceInvadersGame::ShowMainMenu()
+void GatorInvaders::ShowMainMenu()
 {
     m_State = GameState::MainMenu;
 
@@ -325,21 +333,30 @@ void SpaceInvadersGame::ShowMainMenu()
     m_EnemyBullets.clear();
     m_PlayerBullet.reset();
     m_Player.reset();
-    m_Barriers.clear();
-    m_BarrierHealth.clear();
+
+    // Clear barrier segments
+    m_BarrierPartLookup.clear();
+    for (auto& barrier : m_BarriersSplit)
+    {
+        for (auto& part : barrier.parts)
+        {
+            part.obstacle.reset();
+        }
+    }
+
     m_UFO.reset();
     m_UFOActive = false;
     m_UFOSpawnTimer = 0.0f;
 }
 
-void SpaceInvadersGame::ShowPauseMenu()
+void GatorInvaders::ShowPauseMenu()
 {
     m_State = GameState::Paused;
     if (m_PauseMenu) m_PauseMenu->Show();
     if (m_MainMenu) m_MainMenu->Hide();
 }
 
-void SpaceInvadersGame::StartGame()
+void GatorInvaders::StartGame()
 {
     m_State = GameState::Playing;
     if (m_MainMenu) m_MainMenu->Hide();
@@ -380,12 +397,12 @@ void SpaceInvadersGame::StartGame()
     SpawnBarriers();
 }
 
-void SpaceInvadersGame::QuitGame()
+void GatorInvaders::QuitGame()
 {
     glfwSetWindowShouldClose(GetWindow()->GetNativeWindow(), true);
 }
 
-void SpaceInvadersGame::TogglePause()
+void GatorInvaders::TogglePause()
 {
     if (m_State == GameState::Playing)
     {
@@ -398,7 +415,7 @@ void SpaceInvadersGame::TogglePause()
     }
 }
 
-void SpaceInvadersGame::SpawnEnemyGrid()
+void GatorInvaders::SpawnEnemyGrid()
 {
     m_Enemies.clear();
     m_EnemyRowScores.clear();
@@ -477,63 +494,87 @@ void SpaceInvadersGame::SpawnEnemyGrid()
     if (m_EnemyMoveInterval < 0.2f) m_EnemyMoveInterval = 0.2f;
 }
 
-void SpaceInvadersGame::SpawnBarriers()
+void GatorInvaders::SpawnBarriers()
 {
-    m_Barriers.clear();
-    m_BarrierHealth.clear();
+    // Clear lookup
+    m_BarrierPartLookup.clear();
 
-    const int numBarriers = 4;
+    // Bigger barriers for 4x3 grid - INCREASED SIZE AND SPACING
+    const float barrierWidth  = 140.0f;
+    const float barrierHeight = 80.0f;
 
-    const float barrierWidth  = 180.0f;
-    const float barrierHeight = 90.0f;
+    const float playWidth = 1400.0f;
+    const float spacing   = playWidth / (BARRIER_COUNT + 1);
+    const float barrierY  = -160.0f;
 
-    const float playWidth = 1200.0f;
-    const float spacing   = playWidth / (numBarriers + 1);
-    const float barrierY  = -200.0f;
+    const float partW = barrierWidth / (float)BARRIER_COLS;   // width per column
+    const float partH = barrierHeight / (float)BARRIER_ROWS;  // height per row
 
-    m_Barriers.reserve(numBarriers);
-    m_BarrierHealth.reserve(numBarriers);
-
-    for (int i = 0; i < numBarriers; i++)
+    for (int b = 0; b < BARRIER_COUNT; b++)
     {
-        float x = -playWidth / 2.0f + spacing * (i + 1);
+        float cx = -playWidth / 2.0f + spacing * (b + 1);
 
-        auto barrier = std::make_unique<Obstacle>(
-            glm::vec2(x, barrierY),
-            glm::vec2(barrierWidth, barrierHeight)
-        );
-        barrier->SetName("Barrier");
-        barrier->SetColor(glm::vec4(1.0f));
+        Barrier& barrier = m_BarriersSplit[b];
+        barrier.center = glm::vec2(cx, barrierY);
+        barrier.size   = glm::vec2(barrierWidth, barrierHeight);
 
-        // Trigger collider so bullets pass through but register hits
-        auto col = std::make_unique<BoxCollider>(barrier.get(), glm::vec2(barrierWidth, barrierHeight));
-        col->SetTrigger(true);
-        barrier->SetCollider(std::move(col));
+        int partIndex = 0;
 
-        m_Barriers.push_back(std::move(barrier));
-        m_BarrierHealth.push_back(MAX_BARRIER_HEALTH);
+        // Create 4x3 grid:
+        // Row 0: [0][1][2][3] - all 4 columns
+        // Row 1: [0][1][2][3] - all 4 columns
+        // Row 2: [0][ ][ ][3] - only outer 2 columns
+        for (int row = 0; row < BARRIER_ROWS; row++)
+        {
+            for (int col = 0; col < BARRIER_COLS; col++)
+            {
+                // Bottom row (row 2): only create parts for columns 0 and 3 (outer edges)
+                if (row == BARRIER_ROWS - 1 && (col == 1 || col == 2))
+                    continue;
+
+                if (partIndex >= BARRIER_PARTS)
+                    break;
+
+                BarrierPart& part = barrier.parts[partIndex];
+                part.stage = 0;
+                part.broken = false;
+                part.gridRow = row;
+                part.gridCol = col;
+
+                // Calculate position (origin at barrier center)
+                float leftEdge = cx - barrierWidth * 0.5f;
+                float topEdge  = barrierY + barrierHeight * 0.5f;
+
+                float px = leftEdge + partW * (col + 0.5f);
+                float py = topEdge - partH * (row + 0.5f);
+
+                part.obstacle = std::make_unique<Obstacle>(
+                    glm::vec2(px, py),
+                    glm::vec2(partW, partH)
+                );
+
+                part.obstacle->SetName("BarrierPart");
+                part.obstacle->SetColor(glm::vec4(1.0f));
+
+                // Trigger: we handle bullet kill manually
+                auto collider = std::make_unique<BoxCollider>(part.obstacle.get(), glm::vec2(partW, partH));
+                collider->SetTrigger(true);
+                part.obstacle->SetCollider(std::move(collider));
+
+                // Map collider owner -> indices
+                m_BarrierPartLookup[(Entity*)part.obstacle.get()] = { b, partIndex };
+
+                partIndex++;
+            }
+        }
     }
 
-    std::cout << "Spawned barriers size: " << barrierWidth << " x " << barrierHeight << "\n";
+    std::cout << "Spawned " << BARRIER_COUNT << " barriers (" << barrierWidth << "x" << barrierHeight
+              << "), each with " << BARRIER_PARTS << " parts in a " << BARRIER_COLS << "x" << BARRIER_ROWS
+              << " grid (hollow bottom middle), " << BARRIER_STAGES << " damage stages\n";
 }
 
-void SpaceInvadersGame::UpdateBarrierColors()
-{
-    for (size_t i = 0; i < m_Barriers.size(); i++)
-    {
-        if (m_BarrierHealth[i] <= 0) continue;
-
-        float hp01 = (float)m_BarrierHealth[i] / (float)MAX_BARRIER_HEALTH;
-        hp01 = Clamp01(hp01);
-
-        float r = 1.0f - hp01;
-        float g = hp01;
-
-        m_Barriers[i]->SetColor(glm::vec4(r, g, 0.0f, 1.0f));
-    }
-}
-
-void SpaceInvadersGame::ShootBullet()
+void GatorInvaders::ShootBullet()
 {
     if (!m_Player) return;
 
@@ -555,7 +596,7 @@ void SpaceInvadersGame::ShootBullet()
     m_PlayerBullet->SetCollider(std::move(collider));
 }
 
-void SpaceInvadersGame::EnemyShoot()
+void GatorInvaders::EnemyShoot()
 {
     int aliveCount = 0;
     for (auto& e : m_Enemies)
@@ -592,7 +633,7 @@ void SpaceInvadersGame::EnemyShoot()
     AudioManager::PlaySFX("shoot");
 }
 
-void SpaceInvadersGame::OnUpdate(float deltaTime)
+void GatorInvaders::OnUpdate(float deltaTime)
 {
     // Menus / frozen states
     if (m_State == GameState::MainMenu)
@@ -768,8 +809,6 @@ void SpaceInvadersGame::OnUpdate(float deltaTime)
     {
         m_EnemyShootTimer = 0.0f;
         EnemyShoot();
-
-        // randomize a bit
         m_EnemyShootInterval = 1.0f + (rand() % 100) / 100.0f;
     }
 
@@ -777,9 +816,45 @@ void SpaceInvadersGame::OnUpdate(float deltaTime)
     CleanupDeadEntities();
 }
 
-void SpaceInvadersGame::CheckCollisions()
+void GatorInvaders::CleanupDeadEntities()
 {
+    m_EnemyBullets.erase(
+        std::remove_if(m_EnemyBullets.begin(), m_EnemyBullets.end(),
+            [](const std::unique_ptr<Bullet>& b) { return !b->IsAlive(); }),
+        m_EnemyBullets.end()
+    );
+}
+
+void GatorInvaders::CheckCollisions()
+{
+    // Helper to handle barrier part hits
+    auto hitBarrierPart = [&](Entity* ent) -> bool
+    {
+        auto it = m_BarrierPartLookup.find(ent);
+        if (it == m_BarrierPartLookup.end()) return false;
+
+        int b = it->second.first;
+        int p = it->second.second;
+
+        BarrierPart& part = m_BarriersSplit[b].parts[p];
+        if (part.broken) return false; // already broken => bullet should pass
+
+        part.stage++;
+
+        // stage 0->1->2->3 then break
+        if (part.stage >= BARRIER_STAGES)
+        {
+            part.broken = true;
+            // On the hit that breaks it, we still consume
+            return true;
+        }
+
+        return true; // consumed (bullet dies) if it hit an unbroken piece
+    };
+
+    // ----------------------------
     // Player bullet collisions
+    // ----------------------------
     if (m_PlayerBullet && m_PlayerBullet->IsAlive() && m_PlayerBullet->GetCollider())
     {
         auto hits = Physics::GetCollisions(m_PlayerBullet->GetCollider());
@@ -796,23 +871,12 @@ void SpaceInvadersGame::CheckCollisions()
                 break;
             }
 
-            // Barrier: damage barrier and despawn bullet
-            if (ent->GetName() == "Barrier")
+            // Barrier part: advance stage on hit
+            if (ent->GetName() == "BarrierPart")
             {
-                for (size_t i = 0; i < m_Barriers.size(); i++)
-                {
-                    if ((Entity*)m_Barriers[i].get() != ent) continue;
+                if (hitBarrierPart(ent))
+                    m_PlayerBullet->Kill();
 
-                    if (m_BarrierHealth[i] > 0)
-                    {
-                        m_BarrierHealth[i]--;
-                        m_PlayerBullet->Kill();
-
-                        if (m_BarrierHealth[i] <= 0)
-                            m_Barriers[i]->SetActive(false);
-                    }
-                    break;
-                }
                 break;
             }
 
@@ -833,6 +897,7 @@ void SpaceInvadersGame::CheckCollisions()
                     m_Score += points;
                     break;
                 }
+                break;
             }
 
             // UFO: bonus
@@ -852,13 +917,15 @@ void SpaceInvadersGame::CheckCollisions()
                     m_Score += bonus;
 
                     m_UFO.reset();
-                    break;
                 }
+                break;
             }
         }
     }
 
+    // ----------------------------
     // Enemy bullets vs barriers & player
+    // ----------------------------
     for (auto& bullet : m_EnemyBullets)
     {
         if (!bullet->IsAlive() || !bullet->GetCollider()) continue;
@@ -870,25 +937,16 @@ void SpaceInvadersGame::CheckCollisions()
             Entity* ent = hitCol->GetOwner();
             if (!ent) continue;
 
-            if (ent->GetName() == "Barrier")
+            // Barrier part
+            if (ent->GetName() == "BarrierPart")
             {
-                for (size_t i = 0; i < m_Barriers.size(); i++)
-                {
-                    if ((Entity*)m_Barriers[i].get() != ent) continue;
+                if (hitBarrierPart(ent))
+                    bullet->Kill();
 
-                    if (m_BarrierHealth[i] > 0)
-                    {
-                        m_BarrierHealth[i]--;
-                        bullet->Kill();
-
-                        if (m_BarrierHealth[i] <= 0)
-                            m_Barriers[i]->SetActive(false);
-                    }
-                    break;
-                }
                 break;
             }
 
+            // Enemy bullet hits player
             if (m_Player && ent == m_Player.get())
             {
                 bullet->Kill();
@@ -910,16 +968,7 @@ void SpaceInvadersGame::CheckCollisions()
     }
 }
 
-void SpaceInvadersGame::CleanupDeadEntities()
-{
-    m_EnemyBullets.erase(
-        std::remove_if(m_EnemyBullets.begin(), m_EnemyBullets.end(),
-            [](const std::unique_ptr<Bullet>& b) { return !b->IsAlive(); }),
-        m_EnemyBullets.end()
-    );
-}
-
-void SpaceInvadersGame::OnRender()
+void GatorInvaders::OnRender()
 {
     // Background
     if (m_BackgroundTexture)
@@ -957,31 +1006,39 @@ void SpaceInvadersGame::OnRender()
         if (m_CeilingWall) m_CeilingWall->Render();
         if (m_UFOActive && m_UFO && m_UFO->IsAlive()) m_UFO->Render();
 
-        // Barriers (sheet using correct UV slicing)
-        for (size_t i = 0; i < m_Barriers.size(); i++)
+        // Barriers - Each part shows its section of the full texture
+        for (int b = 0; b < BARRIER_COUNT; b++)
         {
-            if (!m_Barriers[i]->IsActive()) continue;
-            if (m_BarrierHealth[i] <= 0) continue;
+            Barrier& barrier = m_BarriersSplit[b];
 
-            float hp = (float)m_BarrierHealth[i];
-            float maxHp = (float)MAX_BARRIER_HEALTH;
+            for (int p = 0; p < BARRIER_PARTS; p++)
+            {
+                BarrierPart& part = barrier.parts[p];
+                if (!part.obstacle) continue;
+                if (part.broken) continue;
 
-            float damage01 = 1.0f - (hp / maxHp);
-            damage01 = std::clamp(damage01, 0.0f, 1.0f);
+                int stage = std::max(0, std::min(BARRIER_STAGES - 1, part.stage));
+                Texture* tex = m_BarrierStageTextures[stage].get();
+                if (!tex) continue;
 
-            // Use 5 real frames from your image
-            const int FRAMES = 5;
-            int frame = (int)std::round(damage01 * (FRAMES - 1));
-            frame = std::clamp(frame, 0, FRAMES - 1);
+                // UV coordinates - each part shows its slice of the full barrier texture
+                // We map the grid position to the corresponding section of the texture
+                float u0 = (float)part.gridCol / (float)BARRIER_COLS;
+                float u1 = (float)(part.gridCol + 1) / (float)BARRIER_COLS;
+                // V coordinates: FLIPPED - row 0 should be bottom of texture, row 2 should be top
+                float v0 = 1.0f - (float)(part.gridRow + 1) / (float)BARRIER_ROWS;
+                float v1 = 1.0f - (float)part.gridRow / (float)BARRIER_ROWS;
 
-            glm::vec4 uv = GetBarrierFrameUV(frame);
-            Renderer::DrawQuadWithTexCoords(
-                m_Barriers[i]->GetPosition(),
-                m_Barriers[i]->GetSize(),
-                m_BarrierSheet.get(),
-                uv,
-                glm::vec4(1.0f)
-            );
+                glm::vec4 uv(u0, v0, u1, v1);
+
+                Renderer::DrawQuadWithTexCoords(
+                    part.obstacle->GetPosition(),
+                    part.obstacle->GetSize(),
+                    tex,
+                    uv,
+                    glm::vec4(1.0f)
+                );
+            }
         }
 
         glm::vec2 camPos = GetCamera()->GetPosition();
@@ -1000,31 +1057,39 @@ void SpaceInvadersGame::OnRender()
     if (m_UFOActive && m_UFO && m_UFO->IsAlive())
         m_UFO->Render();
 
-    // Barriers (sheet by health using correct UV slicing)
-    for (size_t i = 0; i < m_Barriers.size(); i++)
+    // Barriers - Each part shows its section of the full texture
+    for (int b = 0; b < BARRIER_COUNT; b++)
     {
-        if (!m_Barriers[i]->IsActive()) continue;
-        if (m_BarrierHealth[i] <= 0) continue;
+        Barrier& barrier = m_BarriersSplit[b];
 
-        float hp = (float)m_BarrierHealth[i];
-        float maxHp = (float)MAX_BARRIER_HEALTH;
+        for (int p = 0; p < BARRIER_PARTS; p++)
+        {
+            BarrierPart& part = barrier.parts[p];
+            if (!part.obstacle) continue;
+            if (part.broken) continue;
 
-        float damage01 = 1.0f - (hp / maxHp);
-        damage01 = std::clamp(damage01, 0.0f, 1.0f);
+            int stage = std::max(0, std::min(BARRIER_STAGES - 1, part.stage));
+            Texture* tex = m_BarrierStageTextures[stage].get();
+            if (!tex) continue;
 
-        const int FRAMES = 5;
-        int frame = (int)std::round(damage01 * (FRAMES - 1));
-        frame = std::clamp(frame, 0, FRAMES - 1);
+            // UV coordinates - each part shows its slice of the full barrier texture
+            // We map the grid position to the corresponding section of the texture
+            float u0 = (float)part.gridCol / (float)BARRIER_COLS;
+            float u1 = (float)(part.gridCol + 1) / (float)BARRIER_COLS;
+            // V coordinates: FLIPPED - row 0 should be bottom of texture, row 2 should be top
+            float v0 = 1.0f - (float)(part.gridRow + 1) / (float)BARRIER_ROWS;
+            float v1 = 1.0f - (float)part.gridRow / (float)BARRIER_ROWS;
 
-        glm::vec4 uv = GetBarrierFrameUV(frame);
+            glm::vec4 uv(u0, v0, u1, v1);
 
-        Renderer::DrawQuadWithTexCoords(
-            m_Barriers[i]->GetPosition(),
-            m_Barriers[i]->GetSize(),
-            m_BarrierSheet.get(),
-            uv,
-            glm::vec4(1.0f)
-        );
+            Renderer::DrawQuadWithTexCoords(
+                part.obstacle->GetPosition(),
+                part.obstacle->GetSize(),
+                tex,
+                uv,
+                glm::vec4(1.0f)
+            );
+        }
     }
 
     for (auto& e : m_Enemies)
@@ -1037,22 +1102,22 @@ void SpaceInvadersGame::OnRender()
     // UI
     glm::vec2 camPos = GetCamera()->GetPosition();
 
-    TextRenderer::RenderText("Score: " + std::to_string(m_Score),
+    TextRenderer::RenderText("Score:" + std::to_string(m_Score),
         glm::vec2(camPos.x - 600.0f, camPos.y + 330.0f),
         2.0f,
         glm::vec4(1, 1, 1, 1));
 
-    TextRenderer::RenderText("FPS: " + std::to_string(Time::GetFPS()),
+    TextRenderer::RenderText("FPS:" + std::to_string(Time::GetFPS()),
         glm::vec2(camPos.x - 600.0f, camPos.y + 290.0f),
         1.5f,
         glm::vec4(0.7f, 0.7f, 0.7f, 1.0f));
 
-    TextRenderer::RenderText("Lives: " + std::to_string(m_Lives),
-        glm::vec2(camPos.x + 450.0f, camPos.y + 330.0f),
+    TextRenderer::RenderText("Lives:" + std::to_string(m_Lives),
+        glm::vec2(camPos.x + 440.0f, camPos.y + 330.0f),
         2.0f,
         glm::vec4(0, 1, 0, 1));
 
-    TextRenderer::RenderText("Level: " + std::to_string(m_Level),
+    TextRenderer::RenderText("Level:" + std::to_string(m_Level),
         glm::vec2(camPos.x - 70.0f, camPos.y + 330.0f),
         2.0f,
         glm::vec4(1, 1, 0, 1));
@@ -1084,7 +1149,7 @@ void SpaceInvadersGame::OnRender()
     }
 }
 
-void SpaceInvadersGame::OnInput(float deltaTime)
+void GatorInvaders::OnInput(float deltaTime)
 {
     // Global toggles
     if (Input::IsKeyJustPressed(KEY_F11))
@@ -1172,7 +1237,7 @@ void SpaceInvadersGame::OnInput(float deltaTime)
     }
 }
 
-void SpaceInvadersGame::NextLevel()
+void GatorInvaders::NextLevel()
 {
     m_Level++;
     m_State = GameState::Playing;
@@ -1195,7 +1260,7 @@ void SpaceInvadersGame::NextLevel()
     SpawnBarriers();
 }
 
-void SpaceInvadersGame::RestartGame()
+void GatorInvaders::RestartGame()
 {
     m_Score = 0;
     m_Lives = 3;
@@ -1240,7 +1305,7 @@ void SpaceInvadersGame::RestartGame()
     SpawnBarriers();
 }
 
-void SpaceInvadersGame::GameOver()
+void GatorInvaders::GameOver()
 {
     m_State = GameState::GameOver;
 
@@ -1249,7 +1314,7 @@ void SpaceInvadersGame::GameOver()
 }
 
 // Header declares this, so define it
-void SpaceInvadersGame::DrawBackground(Camera* cam, const std::shared_ptr<Texture>& tex)
+void GatorInvaders::DrawBackground(Camera* cam, const std::shared_ptr<Texture>& tex)
 {
     if (!cam || !tex) return;
     Renderer::DrawQuad(cam->GetPosition(), glm::vec2(1400.0f, 800.0f), tex.get());

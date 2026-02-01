@@ -55,9 +55,18 @@ Texture::Texture(const std::string& path)
     std::cout << "Loaded texture: " << path << " (" << m_Width << "x" << m_Height << ")\n";
 }
 
+Texture::Texture(unsigned int existingID, int width, int height)
+    : m_RendererID(existingID)
+    , m_Path("")
+    , m_Width(width)
+    , m_Height(height)
+    , m_Channels(4)
+    , m_OwnsGLTexture(false) {
+}
+
 Texture::~Texture()
 {
-    if (m_RendererID != 0)
+    if (m_OwnsGLTexture && m_RendererID != 0)
         glDeleteTextures(1, &m_RendererID);
 }
 

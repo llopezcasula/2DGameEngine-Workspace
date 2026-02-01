@@ -1,22 +1,23 @@
 #version 330 core
-
-in vec2 v_TexCoord;
 out vec4 FragColor;
 
+in vec2 v_TexCoord;
+
 uniform sampler2D u_Texture;
-uniform vec4 u_Color;
 uniform int u_UseTexture;
+uniform vec4 u_Color;
 
 void main()
 {
+    vec4 col = u_Color;
+
     if (u_UseTexture == 1)
     {
-        FragColor = texture(u_Texture, v_TexCoord) * u_Color;
+        vec4 tex = texture(u_Texture, v_TexCoord);
+        col *= tex;               // keeps tex.a
+        // Optional: discard fully transparent pixels (prevents fringes)
+        // if (col.a < 0.01) discard;
     }
-    else
-    {
-        FragColor = u_Color;
-    }
+
+    FragColor = col;
 }
-
-
