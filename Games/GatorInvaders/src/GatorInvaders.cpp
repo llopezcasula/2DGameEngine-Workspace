@@ -58,6 +58,8 @@ static glm::vec4 GetBarrierPartUV(int partIndex, int parts, Texture* tex)
     return glm::vec4(u0, v0, u1, v1);
 }
 
+static constexpr float UFO_RENDER_OFFSET_X = -7.0f; // +right / -left
+
 
 // ------------------------------------------------------------
 
@@ -829,7 +831,7 @@ void GatorInvaders::OnUpdate(float deltaTime)
             m_UFO = std::make_unique<Enemy>(glm::vec2(startX, 290.0f), 0.0f);
             m_UFO->SetName("UFO");
 
-            float fw = m_UFOTexture->GetWidth() / 2.0f;
+            float fw = (float)m_UFOTexture->GetWidth();      // NO /2 (single frame)
             float fh = (float)m_UFOTexture->GetHeight();
             float ar = (fh > 0.0f) ? (fw / fh) : 1.0f;
 
@@ -838,12 +840,13 @@ void GatorInvaders::OnUpdate(float deltaTime)
 
             m_UFO->SetSize(size);
             m_UFO->SetColor(glm::vec4(1, 1, 1, 1));
-            m_UFO->SetUseSpriteSheet(true);
-            m_UFO->SetTexture(m_UFOTexture.get());
-            m_UFO->SetAnimationFrame(0);
+            m_UFO->SetUseSpriteSheet(false);                 // IMPORTANT
+            m_UFO->SetTexture(m_UFOTexture.get());           // single texture
+            // no animation frame needed
 
 
-            glm::vec2 ufoColliderSize = size * 0.50f;
+
+            glm::vec2 ufoColliderSize = size * 0.55f;
             auto col = std::make_unique<BoxCollider>(m_UFO.get(), ufoColliderSize);
             col->SetTrigger(true);
             m_UFO->SetCollider(std::move(col));
@@ -900,8 +903,6 @@ void GatorInvaders::OnUpdate(float deltaTime)
             e->SetPosition(pos);
         }
 
-        if (m_UFOActive && m_UFO)
-            m_UFO->SetAnimationFrame(m_CurrentEnemyFrame);
 
         if (hitEdge)
         {
@@ -960,6 +961,65 @@ void GatorInvaders::CheckCollisions()
         return true; // consumed (bullet dies) if it hit an unbroken piece
     };
 
+    auto SegmentIntersectsAABB = [](glm::vec2 p0, glm::vec2 p1, glm::vec2 minB, glm::vec2 maxB) -> bool
+    {
+        // Liang–Barsky style parametric clip
+        glm::vec2 d = p1 - p0;
+        float tmin = 0.0f, tmax = 1.0f;
+
+        auto clip = [&](float p, float q) {
+            if (p == 0.0f) return q >= 0.0f;
+            float r = q / p;
+            if (p < 0.0f) { if (r > tmax) return false; if (r > tmin) tmin = r; }
+            else         { if (r < tmin) return false; if (r < tmax) tmax = r; }
+            return true;
+        };
+
+        if (!clip(-d.x, p0.x - minB.x)) return false;
+        if (!clip( d.x, maxB.x - p0.x)) return false;
+        if (!clip(-d.y, p0.y - minB.y)) return false;
+        if (!clip( d.y, maxB.y - p0.y)) return false;
+        return true;
+    };
+
+    if (m_PlayerBullet && m_PlayerBullet->IsAlive())
+    {
+        glm::vec2 p0 = m_PlayerBullet->GetPrevPosition();
+        glm::vec2 p1 = m_PlayerBullet->GetPosition();
+
+        for (size_t i = 0; i < m_Enemies.size(); i++)
+        {
+            auto& e = m_Enemies[i];
+            if (!e || !e->IsAlive()) continue;
+
+            auto* col = e->GetCollider();
+            auto* box = dynamic_cast<BoxCollider*>(col);
+            if (!box) continue;
+
+            // BoxCollider stores its size (you call SetSize on it in Bullet, so it exists here too)
+            glm::vec2 half = box->GetSize() * 0.5f;   // <-- if BoxCollider has GetSize()
+
+            glm::vec2 c = e->GetPosition();
+            glm::vec2 minB = c - half;
+            glm::vec2 maxB = c + half;
+
+
+            if (SegmentIntersectsAABB(p0, p1, minB, maxB))
+            {
+                e->Kill();
+                if (auto* c = e->GetCollider())
+                    c->SetEnabled(false);
+
+                m_PlayerBullet->Kill();
+                AudioManager::PlaySFX("enemy_killed");
+                int points = (i < m_EnemyRowScores.size()) ? m_EnemyRowScores[i] : 10;
+                m_Score += points;
+                return; // bullet consumed
+            }
+        }
+    }
+
+
     // ----------------------------
     // Player bullet collisions
     // ----------------------------
@@ -997,6 +1057,9 @@ void GatorInvaders::CheckCollisions()
                     if (!m_Enemies[i]->IsAlive()) break;
 
                     m_Enemies[i]->Kill();
+                    if (auto* c = m_Enemies[i]->GetCollider())
+                        c->SetEnabled(false);
+
                     m_PlayerBullet->Kill();
 
                     AudioManager::PlaySFX("enemy_killed");
@@ -1078,14 +1141,18 @@ void GatorInvaders::CheckCollisions()
 
 void GatorInvaders::OnRender()
 {
-    // Background
+    // ------------------------------------------------------------
+    // Background (always)
+    // ------------------------------------------------------------
     if (m_BackgroundTexture)
     {
         glm::vec2 camPos = GetCamera()->GetPosition();
         Renderer::DrawQuad(camPos, glm::vec2(1400.0f, 800.0f), m_BackgroundTexture.get());
     }
 
-    // Main menu screen
+    // ------------------------------------------------------------
+    // Main Menu
+    // ------------------------------------------------------------
     if (m_State == GameState::MainMenu)
     {
         glm::vec2 camPos = GetCamera()->GetPosition();
@@ -1104,17 +1171,45 @@ void GatorInvaders::OnRender()
         return;
     }
 
-    // Paused screen (render world + pause menu)
-    if (m_State == GameState::Paused)
+    // ------------------------------------------------------------
+    // Controls screen
+    // ------------------------------------------------------------
+    if (m_State == GameState::Controls)
     {
-        for (auto& e : m_Enemies) if (e->IsAlive()) e->Render();
-        if (m_PlayerBullet) m_PlayerBullet->Render();
-        for (auto& b : m_EnemyBullets) b->Render();
-        if (m_Player) m_Player->Render();
-        if (m_CeilingWall) m_CeilingWall->Render();
-        if (m_UFOActive && m_UFO && m_UFO->IsAlive()) m_UFO->Render();
+        glm::vec2 camPos = GetCamera()->GetPosition();
 
-        // Barriers - Each part shows its section of the full texture
+        TextRenderer::RenderText("CONTROLS",
+            glm::vec2(camPos.x - 140.0f, camPos.y + 260.0f),
+            3.0f,
+            glm::vec4(1, 1, 1, 1));
+
+        float x  = camPos.x - 420.0f;
+        float y  = camPos.y + 170.0f;
+        float s  = 1.6f;
+        float dy = 38.0f;
+
+        TextRenderer::RenderText("       Move Left:           LEFT Arrow / A",  glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Move Right:          RIGHT Arrow / D", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Shoot:               SPACE",          glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Pause:               ESC / P",        glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Next Level:          R",              glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Fullscreen:          F11",            glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+        TextRenderer::RenderText("       Show Hitboxes:       F1",             glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
+
+        TextRenderer::RenderText("Press ESC to go back",
+            glm::vec2(camPos.x - 170.0f, camPos.y - 150.0f),
+            1.5f,
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
+
+        if (m_ControlsMenu) m_ControlsMenu->Render(*GetCamera());
+        return;
+    }
+
+    // ------------------------------------------------------------
+    // Helper: draw barriers (used in Playing + Paused)
+    // ------------------------------------------------------------
+    auto DrawBarriers = [&]()
+    {
         for (int b = 0; b < BARRIER_COUNT; b++)
         {
             Barrier& barrier = m_BarriersSplit[b];
@@ -1123,17 +1218,17 @@ void GatorInvaders::OnRender()
             {
                 BarrierPart& part = barrier.parts[p];
                 if (!part.obstacle) continue;
-                if (part.broken) continue;
+                if (part.broken)    continue;
 
                 int stage = std::max(0, std::min(BARRIER_STAGES - 1, part.stage));
                 Texture* tex = m_BarrierStageTextures[stage].get();
                 if (!tex) continue;
 
-                // UV coordinates - each part shows its slice of the full barrier texture
-                // We map the grid position to the corresponding section of the texture
+                // Each part shows its slice of the texture based on its grid row/col
                 float u0 = (float)part.gridCol / (float)BARRIER_COLS;
                 float u1 = (float)(part.gridCol + 1) / (float)BARRIER_COLS;
-                // V coordinates: FLIPPED - row 0 should be bottom of texture, row 2 should be top
+
+                // Flip V so row 0 is the TOP visually (matches how you place parts from topEdge downward)
                 float v0 = 1.0f - (float)(part.gridRow + 1) / (float)BARRIER_ROWS;
                 float v1 = 1.0f - (float)part.gridRow / (float)BARRIER_ROWS;
 
@@ -1148,99 +1243,41 @@ void GatorInvaders::OnRender()
                 );
             }
         }
+    };
 
-        glm::vec2 camPos = GetCamera()->GetPosition();
-        TextRenderer::RenderText("PAUSED",
-            glm::vec2(camPos.x - 100.0f, camPos.y + 200.0f),
-            3.0f,
-            glm::vec4(1, 1, 0, 1));
-
-        if (m_PauseMenu) m_PauseMenu->Render(*GetCamera());
-        return;
-    }
-
-    if (m_State == GameState::Controls)
-    {
-        glm::vec2 camPos = GetCamera()->GetPosition();
-
-        TextRenderer::RenderText("CONTROLS",
-            glm::vec2(camPos.x - 140.0f, camPos.y + 260.0f),
-            3.0f,
-            glm::vec4(1, 1, 1, 1));
-
-        // List your controls (edit as you like)
-        float x = camPos.x - 420.0f;
-        float y = camPos.y + 170.0f;
-        float s = 1.6f;
-        float dy = 38.0f;
-
-        TextRenderer::RenderText("       Move Left:           LEFT Arrow / A", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
-        TextRenderer::RenderText("       Move Right:          RIGHT Arrow / D", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
-        TextRenderer::RenderText("       Shoot:               SPACE", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
-        TextRenderer::RenderText("       Pause:               ESC / P", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
-        TextRenderer::RenderText("       Next Level:          R", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
-        TextRenderer::RenderText("       Fullscreen:          F11", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
-        TextRenderer::RenderText("       Show Hitboxes:       F1", glm::vec2(x, y), s, glm::vec4(1,1,1,1)); y -= dy;
-
-        TextRenderer::RenderText("Press ESC to go back",
-            glm::vec2(camPos.x - 170.0f, camPos.y - 150.0f),
-            1.5f,
-            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
-
-        if (m_ControlsMenu) m_ControlsMenu->Render(*GetCamera());
-        return;
-    }
-
-
-    // Gameplay world
+    // ------------------------------------------------------------
+    // WORLD RENDER (for Playing, Paused, GameOver, LevelComplete, PlayerHit)
+    // ------------------------------------------------------------
     if (m_CeilingWall) m_CeilingWall->Render();
 
+    // UFO (render offset so sprite looks centered, but restore position for physics)
     if (m_UFOActive && m_UFO && m_UFO->IsAlive())
-        m_UFO->Render();
-
-    // Barriers - Each part shows its section of the full texture
-    for (int b = 0; b < BARRIER_COUNT; b++)
     {
-        Barrier& barrier = m_BarriersSplit[b];
+        glm::vec2 originalPos = m_UFO->GetPosition();
+        glm::vec2 renderPos = originalPos;
+        renderPos.x += UFO_RENDER_OFFSET_X;
 
-        for (int p = 0; p < BARRIER_PARTS; p++)
-        {
-            BarrierPart& part = barrier.parts[p];
-            if (!part.obstacle) continue;
-            if (part.broken) continue;
-
-            int stage = std::max(0, std::min(BARRIER_STAGES - 1, part.stage));
-            Texture* tex = m_BarrierStageTextures[stage].get();
-            if (!tex) continue;
-
-            // UV coordinates - each part shows its slice of the full barrier texture
-            // We map the grid position to the corresponding section of the texture
-            float u0 = (float)part.gridCol / (float)BARRIER_COLS;
-            float u1 = (float)(part.gridCol + 1) / (float)BARRIER_COLS;
-            // V coordinates: FLIPPED - row 0 should be bottom of texture, row 2 should be top
-            float v0 = 1.0f - (float)(part.gridRow + 1) / (float)BARRIER_ROWS;
-            float v1 = 1.0f - (float)part.gridRow / (float)BARRIER_ROWS;
-
-            glm::vec4 uv(u0, v0, u1, v1);
-
-            Renderer::DrawQuadWithTexCoords(
-                part.obstacle->GetPosition(),
-                part.obstacle->GetSize(),
-                tex,
-                uv,
-                glm::vec4(1.0f)
-            );
-        }
+        m_UFO->SetPosition(renderPos);
+        m_UFO->Render();
+        m_UFO->SetPosition(originalPos);
     }
 
-    for (auto& e : m_Enemies)
-        if (e->IsAlive()) e->Render();
+    // Barriers
+    DrawBarriers();
 
+    // Enemies
+    for (auto& e : m_Enemies)
+        if (e && e->IsAlive())
+            e->Render();
+
+    // Bullets + player
     if (m_PlayerBullet) m_PlayerBullet->Render();
-    for (auto& b : m_EnemyBullets) b->Render();
+    for (auto& b : m_EnemyBullets) if (b) b->Render();
     if (m_Player) m_Player->Render();
 
-    // UI
+    // ------------------------------------------------------------
+    // UI (always during gameplay-ish states)
+    // ------------------------------------------------------------
     glm::vec2 camPos = GetCamera()->GetPosition();
 
     TextRenderer::RenderText("Score:" + std::to_string(m_Score),
@@ -1263,6 +1300,20 @@ void GatorInvaders::OnRender()
         2.0f,
         glm::vec4(1, 1, 0, 1));
 
+    // ------------------------------------------------------------
+    // Overlays / menus
+    // ------------------------------------------------------------
+    if (m_State == GameState::Paused)
+    {
+        TextRenderer::RenderText("PAUSED",
+            glm::vec2(camPos.x - 100.0f, camPos.y + 200.0f),
+            3.0f,
+            glm::vec4(1, 1, 0, 1));
+
+        if (m_PauseMenu) m_PauseMenu->Render(*GetCamera());
+        return;
+    }
+
     if (m_State == GameState::GameOver)
     {
         TextRenderer::RenderText("GAME OVER",
@@ -1275,8 +1326,7 @@ void GatorInvaders::OnRender()
             2.0f,
             glm::vec4(1, 1, 1, 1));
     }
-
-    if (m_State == GameState::LevelComplete)
+    else if (m_State == GameState::LevelComplete)
     {
         TextRenderer::RenderText("LEVEL COMPLETE!",
             glm::vec2(camPos.x - 235.0f, camPos.y + 50.0f),
@@ -1289,6 +1339,7 @@ void GatorInvaders::OnRender()
             glm::vec4(1, 1, 1, 1));
     }
 }
+
 
 void GatorInvaders::OnInput(float deltaTime)
 {

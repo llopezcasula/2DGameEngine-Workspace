@@ -94,9 +94,9 @@ void Physics::DebugRenderColliders()
 
     for (Collider* collider : s_Colliders)
     {
-        if (collider)
-        {
-            collider->DebugRender();
-        }
+        if (!collider) continue;
+        if (!collider->IsEnabled()) continue;
+        collider->DebugRender();
     }
+
 }

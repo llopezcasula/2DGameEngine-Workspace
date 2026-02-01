@@ -38,6 +38,8 @@ void Bullet::SetSize(const glm::vec2& size)
 void Bullet::Update(float deltaTime)
 {
     if (!m_Alive) return;
+
+    m_PrevPos = GetPosition();
     
     m_Position += m_Direction * m_Speed * deltaTime;
     

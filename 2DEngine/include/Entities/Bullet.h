@@ -19,7 +19,11 @@ public:
     void SetColor(const glm::vec4& color) { m_Color = color; }
     void SetSize(const glm::vec2& size);
 
+    glm::vec2 GetPrevPosition() const { return m_PrevPos; }
+
+
 protected:
+    glm::vec2 m_PrevPos;
     glm::vec2 m_Direction;
     glm::vec2 m_Size;
     glm::vec4 m_Color;
