@@ -1157,15 +1157,43 @@ void GatorInvaders::OnRender()
     {
         glm::vec2 camPos = GetCamera()->GetPosition();
 
-        TextRenderer::RenderText("GATOR INVADERS",
-            glm::vec2(camPos.x - 280.0f, camPos.y + 200.0f),
-            3.5f,
-            glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+        glm::vec2 titlePos = glm::vec2(camPos.x - 280.0f, camPos.y + 220.0f);
+        float titleScale = 3.5f;
 
-        TextRenderer::RenderText("University of Florida",
-            glm::vec2(camPos.x - 190.0f, camPos.y + 140.0f),
-            1.5f,
-            glm::vec4(0.0f, 0.3f, 1.0f, 1.0f));
+        // --- White outline (4 directions) ---
+        glm::vec4 outlineColor(1, 1, 1, 1);
+        float o = 2.0f;
+
+        TextRenderer::RenderText("GATOR INVADERS", titlePos + glm::vec2(-o,  0), titleScale, outlineColor);
+        TextRenderer::RenderText("GATOR INVADERS", titlePos + glm::vec2( o,  0), titleScale, outlineColor);
+        TextRenderer::RenderText("GATOR INVADERS", titlePos + glm::vec2( 0, -o), titleScale, outlineColor);
+        TextRenderer::RenderText("GATOR INVADERS", titlePos + glm::vec2( 0,  o), titleScale, outlineColor);
+
+        // --- Main text ---
+        TextRenderer::RenderText(
+            "GATOR INVADERS",
+            titlePos,
+            titleScale,
+            glm::vec4(1.0f, 0.7f, 0.0f, 1.0f) // bright UF orange
+        );
+
+        glm::vec2 subPos = glm::vec2(camPos.x - 190.0f, camPos.y + 160.0f);
+        float subScale = 1.5f;
+
+        // Outline
+        TextRenderer::RenderText("University of Florida", subPos + glm::vec2(-o,  0), subScale, outlineColor);
+        TextRenderer::RenderText("University of Florida", subPos + glm::vec2( o,  0), subScale, outlineColor);
+        TextRenderer::RenderText("University of Florida", subPos + glm::vec2( 0, -o), subScale, outlineColor);
+        TextRenderer::RenderText("University of Florida", subPos + glm::vec2( 0,  o), subScale, outlineColor);
+
+        // Main text
+        TextRenderer::RenderText(
+            "University of Florida",
+            subPos,
+            subScale,
+            glm::vec4(0.1f, 0.5f, 1.0f, 1.0f) // bright blue
+        );
+
 
         if (m_MainMenu) m_MainMenu->Render(*GetCamera());
         return;
@@ -1305,10 +1333,25 @@ void GatorInvaders::OnRender()
     // ------------------------------------------------------------
     if (m_State == GameState::Paused)
     {
-        TextRenderer::RenderText("PAUSED",
-            glm::vec2(camPos.x - 100.0f, camPos.y + 200.0f),
-            3.0f,
-            glm::vec4(1, 1, 0, 1));
+        glm::vec2 pausedPos = glm::vec2(camPos.x - 100.0f, camPos.y + 200.0f);
+        float pausedScale = 3.0f;
+
+        glm::vec4 outlineColor(1, 1, 1, 1);
+        float o = 2.0f;
+
+        // Outline
+        TextRenderer::RenderText("PAUSED", pausedPos + glm::vec2(-o,  0), pausedScale, outlineColor);
+        TextRenderer::RenderText("PAUSED", pausedPos + glm::vec2( o,  0), pausedScale, outlineColor);
+        TextRenderer::RenderText("PAUSED", pausedPos + glm::vec2( 0, -o), pausedScale, outlineColor);
+        TextRenderer::RenderText("PAUSED", pausedPos + glm::vec2( 0,  o), pausedScale, outlineColor);
+
+        // Main text
+        TextRenderer::RenderText(
+            "PAUSED",
+            pausedPos,
+            pausedScale,
+            glm::vec4(1.0f, 1.0f, 0.0f, 1.0f) // bright yellow
+        );
 
         if (m_PauseMenu) m_PauseMenu->Render(*GetCamera());
         return;
