@@ -1,4 +1,4 @@
-// SpaceInvadersGame.cpp (full file - barrier fix using REAL UV slices for your barrier.png)
+// GatorInvaders.cpp (full file - barrier fix using REAL UV slices for your barrier.png)
 
 #include "SpaceInvadersGame.h"
 
