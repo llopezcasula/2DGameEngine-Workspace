@@ -1748,10 +1748,23 @@ void GatorInvaders::RestartGame()
 
 static std::string GetLeaderboardPath()
 {
-    // Save next to the executable / working dir
-    // (No assumptions about assets being writable)
-    return "leaderboard.txt";
+#ifdef _WIN32
+    const char* appdata = std::getenv("APPDATA"); // Roaming
+    std::filesystem::path base = appdata ? appdata : ".";
+    std::filesystem::path dir  = base / "Gator Invaders";
+#else
+    // Fallback for non-Windows (fine for now)
+    const char* home = std::getenv("HOME");
+    std::filesystem::path base = home ? home : ".";
+    std::filesystem::path dir  = base / ".gator_invaders";
+#endif
+
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec); // ensure folder exists
+
+    return (dir / "leaderboard.txt").string();
 }
+
 
 void GatorInvaders::LoadLeaderboard()
 {

@@ -2,8 +2,14 @@
 #include "GatorInvaders.h"
 #include <iostream>
 
+#ifdef _WIN32
+    #include <windows.h>
+#endif
+
+
 int main()
 {
+
     std::cout << "\n";
     std::cout << "╔════════════════════════════════════╗\n";
     std::cout << "║                                    ║\n";
@@ -31,3 +37,10 @@ int main()
 
     return 0;
 }
+
+#ifdef _WIN32
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+    return main();
+}
+#endif
